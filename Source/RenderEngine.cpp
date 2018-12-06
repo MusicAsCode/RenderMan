@@ -33,24 +33,24 @@ bool RenderEngine::loadPlugin (const std::string& path)
 
     String errorMessage;
 
-    if (plugin != nullptr) delete plugin;
+    if (_plugin != nullptr) delete _plugin;
 
-    plugin = pluginFormatManager.createPluginInstance (*pluginDescriptions[0],
-                                                       sampleRate,
-                                                       bufferSize,
+    _plugin = pluginFormatManager.createPluginInstance (*pluginDescriptions[0],
+                                                       _sampleRate,
+                                                        _bufferSize,
                                                        errorMessage);
-    if (plugin != nullptr)
+    if (_plugin != nullptr)
     {
         // Success so set up plugin, then set up features and get all available
         // parameters from this given plugin.
-        plugin->prepareToPlay (sampleRate, bufferSize);
-        plugin->setNonRealtime (true);
+        _plugin->prepareToPlay (_sampleRate, _bufferSize);
+        _plugin->setNonRealtime (true);
 
-        mfcc.setup (512, 42, 13, 20, int (sampleRate / 2), sampleRate);
+        _mfcc.setup (512, 42, 13, 20, int (_sampleRate / 2), _sampleRate);
 
         // Resize the pluginParameters patch type to fit this plugin and init
         // all the values to 0.0f!
-        fillAvailablePluginParameters (pluginParameters);
+        fillAvailablePluginParameters (_pluginParameters);
 
         return true;
     }
@@ -71,7 +71,7 @@ void RenderEngine::renderPatch (const uint8  midiNote,
     // Get the overriden patch and set the vst parameters with it.
     PluginPatch overridenPatch = getPatch();
     for (const auto& parameter : overridenPatch)
-        plugin->setParameter (parameter.first, parameter.second);
+        _plugin->setParameter (parameter.first, parameter.second);
 
     // Get the note on midiBuffer.
     MidiMessage onMessage = MidiMessage::noteOn (1,
@@ -84,34 +84,34 @@ void RenderEngine::renderPatch (const uint8  midiNote,
     // Setup fft here so it is destroyed when rendering is finished and
     // the stack unwinds so it doesn't share frames with a new patch.
     maxiFFT fft;
-    fft.setup (fftSize, fftSize / 2, fftSize / 4);
+    fft.setup (_fftSize, _fftSize / 2, _fftSize / 4);
 
     // Data structure to hold multi-channel audio data.
-    AudioSampleBuffer audioBuffer (plugin->getTotalNumOutputChannels(),
-                                   bufferSize);
+    AudioSampleBuffer audioBuffer (_plugin->getTotalNumOutputChannels(),
+                                   _bufferSize);
 
-    int numberOfBuffers = int (std::ceil (renderLength * sampleRate / bufferSize));
+    int numberOfBuffers = int (std::ceil (renderLength * _sampleRate / _bufferSize));
 
     // Clear and reserve memory for the audio storage!
-    processedMonoAudioPreview.clear();
-    processedMonoAudioPreview.reserve (numberOfBuffers * bufferSize);
+    _processedMonoAudioPreview.clear();
+    _processedMonoAudioPreview.reserve (numberOfBuffers * _bufferSize);
 
     // Number of FFT, MFCC and RMS frames.
-    int numberOfFFT = int (std::ceil (renderLength * sampleRate / fftSize)) * 4;
-    rmsFrames.clear();
-    rmsFrames.reserve (numberOfFFT);
-    currentRmsFrame = 0.0;
-    mfccFeatures.clear();
-    mfccFeatures.reserve (numberOfFFT);
+    int numberOfFFT = int (std::ceil (renderLength * _sampleRate / _fftSize)) * 4;
+    _rmsFrames.clear();
+    _rmsFrames.reserve (numberOfFFT);
+    _currentRmsFrame = 0.0;
+    _mfccFeatures.clear();
+    _mfccFeatures.reserve (numberOfFFT);
 
-    plugin->prepareToPlay (sampleRate, bufferSize);
+    _plugin->prepareToPlay (_sampleRate, _bufferSize);
 
     for (int i = 0; i < numberOfBuffers; ++i)
     {
         // Trigger note off if in the correct audio buffer.
         ifTimeSetNoteOff (noteLength,
-                          sampleRate,
-                          bufferSize,
+                          _sampleRate,
+                          _bufferSize,
                           1,
                           midiNote,
                           midiVelocity,
@@ -119,7 +119,7 @@ void RenderEngine::renderPatch (const uint8  midiNote,
                           midiNoteBuffer);
 
         // Turn Midi to audio via the vst.
-        plugin->processBlock (audioBuffer, midiNoteBuffer);
+        _plugin->processBlock (audioBuffer, midiNoteBuffer);
 
         // Get audio features and fill the datastructure.
         fillAudioFeatures (audioBuffer, fft);
@@ -145,10 +145,10 @@ void RenderEngine::fillAudioFeatures (const AudioSampleBuffer& data,
         currentFrame /= numberChannels;
 
         // Save the audio for playback and plotting!
-        processedMonoAudioPreview.push_back (currentFrame);
+        _processedMonoAudioPreview.push_back (currentFrame);
 
         // RMS.
-        currentRmsFrame += (currentFrame * currentFrame);
+        _currentRmsFrame += (currentFrame * currentFrame);
 
         // Extract features.
         if (fft.process (currentFrame))
@@ -156,20 +156,20 @@ void RenderEngine::fillAudioFeatures (const AudioSampleBuffer& data,
             // This isn't real-time so I can take the luxuary of allocating
             // heap memory here.
             double* mfccs = new double[13];
-            mfcc.mfcc (fft.magnitudes, mfccs);
+            _mfcc.mfcc (fft.magnitudes, mfccs);
 
             std::array<double, 13> mfccsFrame;
             std::memcpy (mfccsFrame.data(), mfccs, sizeof (double) * 13);
 
             // Add the mfcc frames here.
-            mfccFeatures.push_back (mfccsFrame);
+            _mfccFeatures.push_back (mfccsFrame);
             delete[] mfccs;
 
             // Root Mean Square.
-            currentRmsFrame /= fftSize;
-            currentRmsFrame = sqrt (currentRmsFrame);
-            rmsFrames.push_back (currentRmsFrame);
-            currentRmsFrame = 0.0;
+            _currentRmsFrame /= _fftSize;
+            _currentRmsFrame = sqrt (_currentRmsFrame);
+            _rmsFrames.push_back (_currentRmsFrame);
+            _currentRmsFrame = 0.0;
         }
     }
 }
@@ -200,11 +200,13 @@ void RenderEngine::ifTimeSetNoteOff (const double& noteLength,
     }
 }
 
+
+
 //==============================================================================
 bool RenderEngine::overridePluginParameter (const int   index,
                                             const float value)
 {
-    int biggestParameterIndex = pluginParameters.size() - 1;
+    int biggestParameterIndex = _pluginParameters.size() - 1;
 
     if (biggestParameterIndex < 0)
     {
@@ -212,7 +214,7 @@ bool RenderEngine::overridePluginParameter (const int   index,
                      "No patch set. Is the plugin loaded?" << std::endl;
         return false;
     }
-    else if (index > pluginParameters[biggestParameterIndex].first)
+    else if (index > _pluginParameters[biggestParameterIndex].first)
     {
         std::cout << "RenderEngine::overridePluginParameter error: " <<
                      "Overriden parameter index is greater than the biggest parameter index." <<
@@ -234,19 +236,19 @@ bool RenderEngine::overridePluginParameter (const int   index,
         return false;
     }
 
-    auto iterator = std::find_if (overridenParameters.begin(),
-                                  overridenParameters.end(),
+    auto iterator = std::find_if (_overridenParameters.begin(),
+                                  _overridenParameters.end(),
                                   [&index] (const std::pair<int, float>& parameter)
                                   {
                                       return parameter.first == index;
                                   });
 
-    bool exists = (iterator != overridenParameters.end());
+    bool exists = (iterator != _overridenParameters.end());
 
     if (exists)
         iterator->second = value;
     else
-        overridenParameters.push_back(std::make_pair(index, value));
+        _overridenParameters.push_back(std::make_pair(index, value));
 
     return true;
 }
@@ -254,7 +256,7 @@ bool RenderEngine::overridePluginParameter (const int   index,
 //==============================================================================
 bool RenderEngine::removeOverridenParameter (const int index)
 {
-    int biggestParameterIndex = pluginParameters.size() - 1;
+    int biggestParameterIndex = _pluginParameters.size() - 1;
 
     if (biggestParameterIndex < 0)
     {
@@ -262,7 +264,7 @@ bool RenderEngine::removeOverridenParameter (const int index)
                      "No patch set. Is the plugin loaded?" << std::endl;
         return false;
     }
-    else if (index > pluginParameters[biggestParameterIndex].first)
+    else if (index > _pluginParameters[biggestParameterIndex].first)
     {
         std::cout << "RenderEngine::removeOverridenParameter error: " <<
                      "Overriden parameter index is greater than the biggest parameter index." <<
@@ -277,18 +279,18 @@ bool RenderEngine::removeOverridenParameter (const int index)
         return false;
     }
 
-    auto iterator = std::find_if (overridenParameters.begin(),
-                                  overridenParameters.end(),
+    auto iterator = std::find_if (_overridenParameters.begin(),
+                                  _overridenParameters.end(),
                                   [&index] (const std::pair<int, float>& parameter)
                                   {
                                       return parameter.first == index;
                                   });
 
-    bool exists = (iterator != overridenParameters.end());
+    bool exists = (iterator != _overridenParameters.end());
 
     if (exists)
     {
-        overridenParameters.erase(iterator);
+        _overridenParameters.erase(iterator);
         return true;
     }
 
@@ -302,13 +304,13 @@ bool RenderEngine::removeOverridenParameter (const int index)
 void RenderEngine::fillAvailablePluginParameters (PluginPatch& params)
 {
     params.clear();
-    params.reserve (plugin->getNumParameters());
+    params.reserve (_plugin->getNumParameters());
 
     int usedParameterAmount = 0;
-    for (int i = 0; i < plugin->getNumParameters(); ++i)
+    for (int i = 0; i < _plugin->getNumParameters(); ++i)
     {
         // Ensure the parameter is not unused.
-        if (plugin->getParameterName(i) != "Param")
+        if (_plugin->getParameterName(i) != "Param")
         {
             ++usedParameterAmount;
             params.push_back (std::make_pair (i, 0.0f));
@@ -322,15 +324,15 @@ const String RenderEngine::getPluginParametersDescription()
 {
     String parameterListString ("");
 
-    if (plugin != nullptr)
+    if (_plugin != nullptr)
     {
         std::ostringstream ss;
 
-        for (const auto& pair : pluginParameters)
+        for (const auto& pair : _pluginParameters)
         {
             ss << std::setw (3) << std::setfill (' ') << pair.first;
 
-            const String name = plugin->getParameterName (pair.first);
+            const String name = _plugin->getParameterName (pair.first);
             const String index (ss.str());
 
             parameterListString = parameterListString +
@@ -351,12 +353,12 @@ const String RenderEngine::getPluginParametersDescription()
 //==============================================================================
 void RenderEngine::setPatch (const PluginPatch patch)
 {
-    const size_t currentParameterSize = pluginParameters.size();
+    const size_t currentParameterSize = _pluginParameters.size();
     const size_t newPatchParameterSize = patch.size();
 
     if (currentParameterSize == newPatchParameterSize)
     {
-        pluginParameters = patch;
+        _pluginParameters = patch;
     }
     else
     {
@@ -369,16 +371,16 @@ void RenderEngine::setPatch (const PluginPatch patch)
 //==============================================================================
 const PluginPatch RenderEngine::getPatch()
 {
-    if (overridenParameters.size() == 0)
-        return pluginParameters;
+    if (_overridenParameters.size() == 0)
+        return _pluginParameters;
 
-    PluginPatch overridenPluginParameters = pluginParameters;
+    PluginPatch overridenPluginParameters = _pluginParameters;
     std::pair<int, float> copy;
 
     for (auto& parameter : overridenPluginParameters)
     {
         // Should we have overriden this parameter's index...
-        if (std::any_of(overridenParameters.begin(), overridenParameters.end(),
+        if (std::any_of(_overridenParameters.begin(), _overridenParameters.end(),
                         [parameter, &copy] (std::pair<int, float> p)
                         {
                             copy = p;
@@ -394,13 +396,13 @@ const PluginPatch RenderEngine::getPatch()
 //==============================================================================
 const size_t RenderEngine::getPluginParameterSize()
 {
-    return pluginParameters.size();
+    return _pluginParameters.size();
 }
 
 //==============================================================================
 const MFCCFeatures RenderEngine::getMFCCFrames()
 {
-    return mfccFeatures;
+    return _mfccFeatures;
 }
 
 //==============================================================================
@@ -408,13 +410,13 @@ const MFCCFeatures RenderEngine::getNormalisedMFCCFrames(const std::array<double
                                                          const std::array<double, 13>& variance)
 {
     MFCCFeatures normalisedMFCCFrames;
-    normalisedMFCCFrames.resize (mfccFeatures.size());
+    normalisedMFCCFrames.resize(_mfccFeatures.size());
 
     for (size_t i = 0; i < normalisedMFCCFrames.size(); ++i)
     {
         for (size_t j = 0; j < 13; ++j)
         {
-            normalisedMFCCFrames[i][j] = mfccFeatures[i][j] - mean[j];
+            normalisedMFCCFrames[i][j] =_mfccFeatures[i][j] - mean[j];
             normalisedMFCCFrames[i][j] /= variance[j];
         }
     }
@@ -424,28 +426,60 @@ const MFCCFeatures RenderEngine::getNormalisedMFCCFrames(const std::array<double
 //==============================================================================
 const std::vector<double> RenderEngine::getAudioFrames()
 {
-    return processedMonoAudioPreview;
+    return _processedMonoAudioPreview;
 }
 
 //==============================================================================
 const std::vector<double> RenderEngine::getRMSFrames()
 {
-    return rmsFrames;
+    return _rmsFrames;
 }
 
 //==============================================================================
 bool RenderEngine::writeToWav(const std::string& path)
 {
-    const auto size = processedMonoAudioPreview.size();
+    const auto size = _processedMonoAudioPreview.size();
     if (size == 0)
         return false;
 
     maxiRecorder recorder;
     recorder.setup (path);
     recorder.startRecording();
-    const double* data = processedMonoAudioPreview.data();
+    const double* data = _processedMonoAudioPreview.data();
     recorder.passData (data, size);
     recorder.stopRecording();
     recorder.saveToWav();
     return true;
 }
+
+
+
+float
+RenderEngine::getParameterValue(const int index)
+{
+    return _plugin->getParameter(index);
+};
+
+void
+RenderEngine::setParameterValue(const int index, const float newValue)
+{
+    _plugin->setParameter(index, newValue);
+};
+
+const std::string
+RenderEngine::getPluginName()
+{
+    return _plugin->getName().toStdString();
+};
+
+void
+RenderEngine::processAudioMono(std::vector<float>& buffer)
+{
+    // Convert std::vector to juce::AudioBuffer
+    float* dataPtrs[1] = {buffer.data()};
+    AudioBuffer<float> audioBuffer(dataPtrs, 1, buffer.size());
+    MidiBuffer midiBuffer;
+    
+    // Process audio through plugin
+    _plugin->processBlock(audioBuffer, midiBuffer);
+};

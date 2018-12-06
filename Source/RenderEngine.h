@@ -32,20 +32,20 @@ public:
     RenderEngine (int sr,
                   int bs,
                   int ffts) :
-        sampleRate(sr),
-        bufferSize(bs),
-        fftSize(ffts),
-        plugin(nullptr)
+    _sampleRate(sr),
+    _bufferSize(bs),
+    _fftSize(ffts),
+    _plugin(nullptr)
     {
-        maxiSettings::setup (sampleRate, 1, bufferSize);
+        maxiSettings::setup (_sampleRate, 1, _bufferSize);
     }
 
     virtual ~RenderEngine()
     {
-        if (plugin != nullptr)
+        if (_plugin != nullptr)
         {
-            plugin->releaseResources();
-            delete plugin;
+            _plugin->releaseResources();
+            delete _plugin;
         }
     }
 
@@ -76,10 +76,16 @@ public:
                                   const float value);
 
     bool removeOverridenParameter (const int index);
-
     const std::vector<double> getAudioFrames();
-
+    
     bool writeToWav(const std::string& path);
+    
+    
+    // Stuart's methods
+    float getParameterValue(const int index);
+    void setParameterValue(const int index, const float newValue);
+    const std::string getPluginName();
+    void processAudioMono(std::vector<float>& buffer);
 
 private:
     void fillAudioFeatures (const AudioSampleBuffer& data,
@@ -96,17 +102,17 @@ private:
 
     void fillAvailablePluginParameters (PluginPatch& params);
 
-    double               sampleRate;
-    int                  bufferSize;
-    int                  fftSize;
-    maxiMFCC             mfcc;
-    AudioPluginInstance* plugin;
-    PluginPatch          pluginParameters;
-    PluginPatch          overridenParameters;
-    MFCCFeatures         mfccFeatures;
-    std::vector<double>  processedMonoAudioPreview;
-    std::vector<double>  rmsFrames;
-    double               currentRmsFrame;
+    double               _sampleRate;
+    int                  _bufferSize;
+    int                  _fftSize;
+    maxiMFCC             _mfcc;
+    AudioPluginInstance* _plugin;
+    PluginPatch          _pluginParameters;
+    PluginPatch          _overridenParameters;
+    MFCCFeatures         _mfccFeatures;
+    std::vector<double>  _processedMonoAudioPreview;
+    std::vector<double>  _rmsFrames;
+    double               _currentRmsFrame;
 };
 
 

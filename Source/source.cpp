@@ -10,6 +10,7 @@
 
 #include "PatchGenerator.h"
 #include <boost/python.hpp>
+#include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 
 // Could also easily be namespace crap.
 namespace wrap
@@ -184,12 +185,33 @@ namespace wrap
     };
 }
 
+
+
 //==============================================================================
 BOOST_PYTHON_MODULE(librenderman)
 {
     using namespace boost::python;
     using namespace wrap;
 
+    // Vectors
+    class_<std::vector<double>>("DoubleArray")
+    .def(vector_indexing_suite<std::vector<double>>());
+    class_<std::vector<float>>("FloatArray")
+    .def(vector_indexing_suite<std::vector<float>>());
+    class_<std::vector<std::string>>("StringArray")
+    .def(vector_indexing_suite<std::vector<std::string>>());
+    class_<std::vector<int>>("IntArray")
+    .def(vector_indexing_suite<std::vector<int>>());
+    class_<std::vector<bool>>("BoolArray")
+    .def(vector_indexing_suite<std::vector<bool>>());
+    
+    // 2D Vectors
+    class_<std::vector<std::vector<double>>>("DoubleArray2D")
+    .def(vector_indexing_suite<std::vector<std::vector<double>>>());
+    class_<std::vector<std::vector<float>>>("FloatArray2D")
+    .def(vector_indexing_suite<std::vector<std::vector<float>>>());
+
+    // Plugin Host
     class_<RenderEngineWrapper>("RenderEngine", init<int, int, int>())
     .def("load_plugin", &RenderEngineWrapper::loadPlugin)
     .def("set_patch", &RenderEngineWrapper::wrapperSetPatch)
@@ -202,8 +224,13 @@ BOOST_PYTHON_MODULE(librenderman)
     .def("remove_overriden_plugin_parameter", &RenderEngineWrapper::removeOverridenParameter)
     .def("get_audio_frames", &RenderEngineWrapper::wrapperGetAudioFrames)
     .def("get_rms_frames", &RenderEngineWrapper::wrapperGetRMSFrames)
-    .def("write_to_wav", &RenderEngineWrapper::writeToWav);
-
+    .def("write_to_wav", &RenderEngineWrapper::writeToWav)
+    .def("getParameterValue", &RenderEngineWrapper::getParameterValue)
+    .def("setParameterValue", &RenderEngineWrapper::setParameterValue)
+    .def("getPluginName", &RenderEngineWrapper::getPluginName)
+    .def("processAudioMono", &RenderEngineWrapper::processAudioMono)
+    ;
+    
     class_<PatchGeneratorWrapper>("PatchGenerator", init<RenderEngineWrapper&>())
     .def("get_random_parameter", &PatchGeneratorWrapper::wrapperGetRandomParameter)
     .def("get_random_patch", &PatchGeneratorWrapper::wrapperGetRandomPatch);
